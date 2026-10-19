@@ -67,7 +67,10 @@ const DEFAULT = {
     R('Gang3','','','','','','','','','','','','','','','','')
   ]
 };
-let MODE='server';
+// ---- OPSÆTNING ----
+const CLOUD='https://ex-pcv-pck-default-rtdb.europe-west1.firebasedatabase.app/';      // fx 'https://mitprojekt-default-rtdb.europe-west1.firebasedatabase.app' (tom = ingen online-lager)
+const EDIT_PASS='';  // valgfri adgangskode til Rediger-knappen (kun beskyttelse mod uheld, ikke rigtig sikkerhed)
+let MODE='static',last='';
 const DATECOLS=[4,14];
 const FONTS=['Segoe UI','Arial','Helvetica','Verdana','Tahoma','Trebuchet MS','Calibri','Georgia','Times New Roman','Courier New','system-ui','monospace'];
 const SEP_AFTER=[2,5,8,9,12,13]; // tykkere skillelinjer efter disse rækkeindex
@@ -82,15 +85,19 @@ function applyStyle(){const g=['system-ui','monospace','sans-serif','serif'].inc
   $('#app').style.fontFamily=(g?S.font:`"${S.font}"`)+',Arial,sans-serif';$('#app').style.fontSize=S.size+'px'}
 async function getJson(u){const r=await fetch(u);if(!r.ok)throw 0;return r.json()}
 async function load(){
-  let d;
-  try{d=await getJson('api/data');MODE='server'}catch{
-    MODE='static';
-    try{const l=localStorage.getItem('board');if(l)d=JSON.parse(l)}catch{}
-    if(!d)try{d=await getJson('data.json')}catch{}
-    if(!d)d=DEFAULT;
+  let d;MODE='static';
+  if(CLOUD){try{const r=await fetch(CLOUD.replace(/\/$/,'')+'/board.json');if(!r.ok)throw 0;const j=await r.json();MODE='cloud';if(j&&j.json){last=j.json;d=JSON.parse(j.json)}}catch{}}
+  if(MODE!='cloud'){
+    try{d=await getJson('api/data');MODE='server'}catch{try{const l=localStorage.getItem('board');if(l)d=JSON.parse(l)}catch{}}
   }
+  if(!d)try{d=await getJson('data.json')}catch{}
+  if(!d)d=DEFAULT;
   S=normalize(d);render();
-  document.querySelector('.hint').firstChild.textContent=(MODE=='static'?'Statisk tilstand: ændringer gemmes kun i denne browser · ':'')+'Alt+P gemmer hele siden som PNG · Alt+F fuldskærm'}
+  document.querySelector('.hint').firstChild.textContent=({static:'Statisk tilstand: ændringer gemmes kun i denne browser · ',cloud:'Online · '}[MODE]||'')+'Alt+P gemmer hele siden som PNG · Alt+F fuldskærm'}
+// live-opdatering fra online-lager (springes over mens der redigeres)
+setInterval(async()=>{if(MODE!='cloud'||editing)return;
+  try{const r=await fetch(CLOUD.replace(/\/$/,'')+'/board.json');const j=await r.json();
+    if(j&&j.json&&j.json!==last){last=j.json;S=normalize(JSON.parse(j.json));render()}}catch{}},3000);
 function render(){
   applyStyle();
   $('#app').classList.toggle('edit',editing);
@@ -134,7 +141,7 @@ function tools(){
   $('#bar').innerHTML=editing?`<label>Skrifttype <select id="ff">${FONTS.map(f=>`<option${f==S?.font?' selected':''}>${f}</option>`).join('')}</select></label>
    <label>Størrelse <input type="number" id="sz" min="8" max="40" value="${S?.size||12}"> px</label>
    <button id="exp">⭳ Eksportér JSON</button><button id="imp">⭱ Importér JSON</button><input type="file" id="file" accept=".json,application/json" hidden>
-   ${MODE=='static'?'<button id="reset">Slet lokale ændringer</button><span style="color:#8082a8">Gem = kun denne browser. Eksportér JSON og læg filen i repoet som <b>data.json</b> for at opdatere for alle.</span>':'<span style="color:#8082a8">Import erstatter visningen — tryk Gem for at gemme på serveren</span>'}`:'';
+   ${MODE=='static'?'<button id="reset">Slet lokale ændringer</button><span style="color:#8082a8">Gem = kun denne browser. Eksportér JSON og læg filen i repoet som <b>data.json</b> for at opdatere for alle.</span>':MODE=='cloud'?'<span style="color:#8082a8">Gem = online. Alle åbne skærme opdateres inden for få sekunder.</span>':'<span style="color:#8082a8">Import erstatter visningen — tryk Gem for at gemme på serveren</span>'}`:'';
   if(editing){
     $('#add').onclick=()=>{S.rows.push(Array(COLS.length).fill(''));render()};$('#save').onclick=save;
     $('#cancel').onclick=async()=>{editing=false;tools();await load()};
@@ -151,11 +158,15 @@ function tools(){
 function toggleFs(){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.()}
 document.addEventListener('fullscreenchange',()=>{document.querySelector('.hint').style.display=document.fullscreenElement?'none':''});
 async function startEdit(){
-  if(MODE=='static'){editing=true;tools();render();return}
+  if(MODE!='server'){if(EDIT_PASS&&prompt('Adgangskode:')!==EDIT_PASS)return alert('Forkert adgangskode');editing=true;tools();render();return}
   let r=await fetch('/api/auth',{headers:{'x-pass':pass}});
   if(r.status==401){pass=prompt('Adgangskode:')||'';r=await fetch('/api/auth',{headers:{'x-pass':pass}});if(r.status==401)return alert('Forkert adgangskode')}
   editing=true;tools();render()}
 async function save(){
+  if(MODE=='cloud'){const str=JSON.stringify(S);
+    try{const r=await fetch(CLOUD.replace(/\/$/,'')+'/board.json',{method:'PUT',body:JSON.stringify({json:str})});if(!r.ok)throw 0;last=str}
+    catch{return alert('Kunne ikke gemme online')}
+    editing=false;tools();render();return}
   if(MODE=='static'){try{localStorage.setItem('board',JSON.stringify(S))}catch{return alert('Kunne ikke gemme i browseren')}editing=false;tools();render();return}
   const r=await fetch('/api/data',{method:'PUT',headers:{'Content-Type':'application/json','x-pass':pass},body:JSON.stringify(S)});
   if(!r.ok)return alert('Kunne ikke gemme');editing=false;tools();render()}
