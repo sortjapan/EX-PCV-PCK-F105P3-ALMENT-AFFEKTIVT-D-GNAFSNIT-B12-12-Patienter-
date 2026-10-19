@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="da"><head><meta charset="utf-8"><title>Afdelingsoversigt</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style id="css">
+*{box-sizing:border-box}
+html,body{margin:0;background:#1f2030}
+#app{font-size:12px;line-height:1.25;font-family:"Segoe UI",Arial,sans-serif;color:#e9e9f2;background:#1f2030;min-width:1500px;padding-bottom:12px}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#262740;border-bottom:1px solid #3a3b5a}
+.logo{color:#e0349b;font-weight:700;font-size:15px;width:260px}
+h1{font-size:15px;margin:0;font-weight:600;text-align:center;flex:1}
+.tools{width:260px;display:flex;gap:6px;justify-content:flex-end}
+button{background:#3a3b5a;color:#fff;border:0;border-radius:4px;padding:5px 10px;cursor:pointer;font:inherit}
+button:hover{background:#4a4c75}.pri{background:#2f7d4f}
+table{border-collapse:collapse;width:100%}
+th{font-size:.83em;color:#9fa0c0;text-align:left;padding:5px 6px;font-weight:600;white-space:nowrap}
+td{padding:5px 6px;border-top:1px solid #34354f;vertical-align:middle}
+tr.sep td{border-top:1px solid #5a5b80}
+td.t{font-weight:600;min-width:40px}
+td[data-c="3"],td[data-c="5"]{min-width:150px}
+td[data-c="3"]{font-weight:700}
+.dot{display:inline-block;width:1.15em;height:1.15em;border-radius:50%;vertical-align:middle;margin-right:3px;background:transparent}
+.dot.sq{border-radius:3px}
+.g{background:#7fb04a}.y{background:#f6c93b}.r{background:#f2644f}.c{background:#2fd3c4}.p{background:#e8399b}
+.badge{display:inline-block;min-width:16px;text-align:center;border-radius:3px;padding:0 4px;color:#222;font-weight:700;margin-right:5px}
+.b-F{background:#a8d26a}.b-B{background:#f08b6a}.b-8{background:#e8399b}
+[contenteditable]{outline:1px dashed #6a6c9a;min-width:20px;display:inline-block;padding:0 2px}
+.edit .dot{outline:1px dashed #6a6c9a;cursor:pointer}
+.x{color:#f2644f;cursor:pointer;font-weight:700;padding:0 6px}
+.hint{color:#8082a8;font-size:.85em;padding:6px 14px}
+#bar{display:none;gap:14px;align-items:center;padding:6px 14px;background:#2d2e4b;border-bottom:1px solid #3a3b5a}
+.edit #bar{display:flex}
+#bar label{color:#9fa0c0}
+select,input[type=number],input[type=date]{background:#1f2030;color:#fff;border:1px solid #5a5b80;border-radius:4px;padding:3px 6px;font:inherit;color-scheme:dark}
+input[type=number]{width:60px}
+input[type=date]{padding:1px 4px}
+.clr{color:#9fa0c0;cursor:pointer;padding:0 4px}
+</style></head><body>
+<div id="app">
+ <header><div class="logo">Epic ▾</div><h1 id="title"></h1>
+  <div class="tools noshot" id="tools"><button id="edit">✎ Rediger</button></div></header>
+ <div id="bar" class="noshot"></div>
+ <table><thead id="head"></thead><tbody id="body"></tbody></table>
+ <div class="hint noshot">Alt+P gemmer hele siden som PNG · Alt+F fuldskærm</div>
+</div>
+<script>
+const COLS=[['St.','t'],['Patient','t'],['Akt.diag','t'],['Husk EM fritekst','t'],['Førs.udk','t'],['Team (EM) fritekst','t'],['Beh.pl.rev','t'],['ECT','t'],['SRV','d'],['OBS N','t'],['SVC','d'],['KP/UA','dq'],['LAB','d'],['Påk/ISV','dd'],['Krisepl.','t'],['Ord/Udg/Retur','b'],['Plejepers.','t']];
+const CYCLE=['','c','g','y','r','p'];
+const DATECOLS=[4,14];
+const FONTS=['Segoe UI','Arial','Helvetica','Verdana','Tahoma','Trebuchet MS','Calibri','Georgia','Times New Roman','Courier New','system-ui','monospace'];
+const SEP_AFTER=[2,5,8,9,12,13]; // tykkere skillelinjer efter disse rækkeindex
+let S=null, editing=false, pass='';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const toIso=v=>{v=String(v||'');if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;const m=v.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{2}|\d{4})$/);if(!m)return '';return (m[3].length==2?'20'+m[3]:m[3])+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')};
+const fmtDate=v=>v?v.slice(8,10)+'-'+v.slice(5,7)+'-'+v.slice(2,4):'–';
+function normalize(d){d.font=d.font||'Segoe UI';d.size=+d.size||12;d.title=d.title||'';
+  d.rows=(d.rows||[]).map(r=>{r=Array.from({length:COLS.length},(_,i)=>r[i]??'');DATECOLS.forEach(c=>r[c]=toIso(r[c]));return r});return d}
+function applyStyle(){const g=['system-ui','monospace','sans-serif','serif'].includes(S.font);
+  $('#app').style.fontFamily=(g?S.font:`"${S.font}"`)+',Arial,sans-serif';$('#app').style.fontSize=S.size+'px'}
+async function load(){S=normalize(await (await fetch('/api/data')).json());render()}
+function dot(v,cls){return `<span class="dot ${cls} ${v}"></span>`}
+function render(){
+  applyStyle();
+  $('#app').classList.toggle('edit',editing);
+  $('#title').innerHTML=(editing?`<span contenteditable="true" data-title>${esc(S.title)}</span>`:esc(S.title))+` (${S.rows.filter(r=>r[1]).length} Patienter)`;
+  $('#head').innerHTML='<tr>'+COLS.map(c=>`<th>${c[0]}</th>`).join('')+(editing?'<th></th>':'')+'</tr>';
+  $('#body').innerHTML=S.rows.map((r,i)=>{
+    const tds=COLS.map(([n,t],c)=>{
+      const v=r[c]??'';let h;
+      if(DATECOLS.includes(c))h=editing?`<input type="date" value="${esc(v)}" data-r="${i}" data-c="${c}"><span class="clr" data-clr="${i},${c}">×</span>`:fmtDate(v);
+      else if(t=='t')h=editing?`<span contenteditable="true" data-r="${i}" data-c="${c}">${esc(v)}</span>`:(esc(v)||'–');
+      else if(t=='d'||t=='dq')h=`<span data-r="${i}" data-c="${c}" data-k="d">${dot(v,t=='dq'?'sq':'')}</span>`;
+      else if(t=='dd')h=`<span>${(v||',').split(',').map((x,k)=>`<span data-r="${i}" data-c="${c}" data-k="dd" data-i="${k}">${dot(x,'')}</span>`).join('')}</span>`;
+      else{const L=(v[0]||'');h=editing?`<span contenteditable="true" data-r="${i}" data-c="${c}">${esc(v)}</span>`:(v?`<span class="badge b-${esc(L)}">${esc(L)}</span>${esc(v.slice(1).trim())}`:'')}
+      return `<td data-c="${c}" class="${c==0?'t':''}">${h}</td>`}).join('');
+    return `<tr class="${SEP_AFTER.includes(i-1)?'sep':''}">${tds}${editing?`<td><span class="x" data-del="${i}">×</span></td>`:''}</tr>`}).join('');
+}
+$('#body').addEventListener('input',e=>{const t=e.target;if(t.dataset.r!=null)S.rows[t.dataset.r][t.dataset.c]=t.textContent});
+$('#body').addEventListener('click',e=>{
+  if(!editing)return;
+  const cl=e.target.closest('[data-clr]');if(cl){const [i,c]=cl.dataset.clr.split(',');S.rows[i][c]='';return render()}
+  if(e.target.type=='date'){try{e.target.showPicker()}catch{}}
+  const x=e.target.closest('[data-del]');if(x){S.rows.splice(+x.dataset.del,1);return render()}
+  const t=e.target.closest('[data-k]');if(!t)return;
+  const r=S.rows[t.dataset.r],c=t.dataset.c,nx=v=>CYCLE[(CYCLE.indexOf(v)+1)%CYCLE.length];
+  if(t.dataset.k=='d')r[c]=nx(r[c]||'');
+  else{const p=(r[c]||',').split(',');p[+t.dataset.i]=nx(p[+t.dataset.i]||'');r[c]=p.join(',')}
+  render()});
+$('#body').addEventListener('change',e=>{const t=e.target;if(t.type=='date')S.rows[t.dataset.r][t.dataset.c]=t.value});
+// ren tekst ved copy/paste/drop, ingen linjeskift
+document.addEventListener('paste',e=>{if(!e.target.isContentEditable)return;e.preventDefault();
+  document.execCommand('insertText',false,(e.clipboardData.getData('text/plain')||'').replace(/\s*[\r\n]+\s*/g,' '))});
+document.addEventListener('copy',e=>{const t=getSelection().toString();if(!t)return;e.preventDefault();e.clipboardData.setData('text/plain',t)});
+document.addEventListener('cut',e=>{if(!e.target.isContentEditable)return;const t=getSelection().toString();e.preventDefault();e.clipboardData.setData('text/plain',t);document.execCommand('delete')});
+document.addEventListener('drop',e=>{if(e.target.isContentEditable)e.preventDefault()});
+document.addEventListener('keydown',e=>{if(e.key=='Enter'&&e.target.isContentEditable){e.preventDefault();e.target.blur()}});
+document.addEventListener('input',e=>{if(e.target.dataset.title!=null)S.title=e.target.textContent});
+const FS='<button id="fs" title="Fuldskærm (Alt+F)">⛶</button>';
+function tools(){
+  $('#tools').innerHTML=(editing?'<button id="add">+ Række</button><button id="save" class="pri">Gem</button><button id="cancel">Annuller</button>':'<button id="edit">✎ Rediger</button>')+FS;
+  $('#fs').onclick=toggleFs;
+  $('#bar').innerHTML=editing?`<label>Skrifttype <select id="ff">${FONTS.map(f=>`<option${f==S?.font?' selected':''}>${f}</option>`).join('')}</select></label>
+   <label>Størrelse <input type="number" id="sz" min="8" max="40" value="${S?.size||12}"> px</label>
+   <button id="exp">⭳ Eksportér JSON</button><button id="imp">⭱ Importér JSON</button><input type="file" id="file" accept=".json,application/json" hidden>
+   <span style="color:#8082a8">Import erstatter visningen — tryk Gem for at gemme på serveren</span>`:'';
+  if(editing){
+    $('#add').onclick=()=>{S.rows.push(Array(COLS.length).fill(''));render()};$('#save').onclick=save;
+    $('#cancel').onclick=async()=>{editing=false;tools();await load()};
+    $('#ff').onchange=e=>{S.font=e.target.value;applyStyle()};
+    $('#sz').oninput=e=>{S.size=Math.min(40,Math.max(8,+e.target.value||12));applyStyle()};
+    $('#exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));
+      a.download='afdeling-'+new Date().toISOString().slice(0,10)+'.json';a.click()};
+    $('#imp').onclick=()=>$('#file').click();
+    $('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+      try{const d=JSON.parse(await f.text());if(!Array.isArray(d.rows))throw 0;S=normalize(d);tools();render()}
+      catch{alert('Ugyldig JSON-fil (mangler "rows").')}}
+  } else $('#edit').onclick=startEdit}
+function toggleFs(){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.()}
+document.addEventListener('fullscreenchange',()=>{document.querySelector('.hint').style.display=document.fullscreenElement?'none':''});
+async function startEdit(){
+  let r=await fetch('/api/auth',{headers:{'x-pass':pass}});
+  if(r.status==401){pass=prompt('Adgangskode:')||'';r=await fetch('/api/auth',{headers:{'x-pass':pass}});if(r.status==401)return alert('Forkert adgangskode')}
+  editing=true;tools();render()}
+async function save(){
+  const r=await fetch('/api/data',{method:'PUT',headers:{'Content-Type':'application/json','x-pass':pass},body:JSON.stringify(S)});
+  if(!r.ok)return alert('Kunne ikke gemme');editing=false;tools();render()}
+// ---- PNG af hele siden (ingen eksterne biblioteker) ----
+async function savePng(){
+  const app=$('#app'),w=app.scrollWidth,h=app.scrollHeight,sc=2;
+  const clone=app.cloneNode(true);clone.querySelectorAll('.noshot').forEach(n=>n.remove());
+  clone.style.width=w+'px';
+  const xml=new XMLSerializer().serializeToString(clone);
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml"><style>${$('#css').textContent}</style>${xml}</div></foreignObject></svg>`;
+  const img=new Image();img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+  await img.decode();
+  const cv=document.createElement('canvas');cv.width=w*sc;cv.height=h*sc;
+  const g=cv.getContext('2d');g.scale(sc,sc);g.drawImage(img,0,0);
+  cv.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);
+    a.download='afdeling-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.png';a.click()},'image/png')}
+document.addEventListener('keydown',e=>{if(e.altKey&&e.code=='KeyP'){e.preventDefault();savePng()}if(e.altKey&&e.code=='KeyF'){e.preventDefault();toggleFs()}});
+load().then(tools);
+</script></body></html>
