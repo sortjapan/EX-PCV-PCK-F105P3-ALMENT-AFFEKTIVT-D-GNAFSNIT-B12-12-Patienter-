@@ -45,6 +45,29 @@ input[type=date]{padding:1px 4px}
 <script>
 const COLS=[['St.','t'],['Patient','t'],['Akt.diag','t'],['Husk EM fritekst','t'],['Førs.udk','t'],['Team (EM) fritekst','t'],['Beh.pl.rev','t'],['ECT','t'],['SRV','d'],['OBS N','t'],['SVC','d'],['KP/UA','dq'],['LAB','d'],['Påk/ISV','dd'],['Krisepl.','t'],['Ord/Udg/Retur','b'],['Plejepers.','t']];
 const CYCLE=['','c','g','y','r','p'];
+const R=(...a)=>a;
+const DEFAULT = {
+  title: 'EM RHP PCK C105D3 ALMENT AFFEKTIVT DØGNAFSNIT D3',
+  rows: [
+    R('01','Patient 01','Bipolar typ…','Stg 15.10 F2','29-10-26','AAL','21 dag(e)','ECT','g','Alm','','y','','c,c','12-10…','B Tilstede','Plejer A'),
+    R('02','Patient 02','Skizoaffekt…','Stg 15.10 F2','14-10-26','KAG','-24 dag(e)','','g','Alm*','','','','c,c','26-07…','F Tilstede','Plejer B'),
+    R('03','Patient 03','Bipolar typ…','Stg 15.10 GG F2','','','5 dag(e)','ECT','g','Alm','','r','','p,p','21-02…','8 20:00','Plejer B, C'),
+    R('04','Patient 04','Angstlidel…','Stg 14.10 9:30 med far F3','28-10-26','henvist angstpakke','7 dag(e)','','g','Alm','','','','c,c','12-10…','F Tilstede','Plejer D'),
+    R('05','Patient 05','Periodisk…','Stg 13.10 Fase 2','04-11-26','','-4 dag(e)','','g','Alm','','r','','c,c','07-10…','B Tilstede','Plejer C'),
+    R('06','Patient 06','Bipolar typ…','Stg 19.10','27-10-26','FACT','5 dag(e)','','g','Alm','','','','p,p','09-10…','F','Plejer E, A'),
+    R('08','Patient 08','Skizoaffekt…','Stg 19.10 udsk kl 10 med FA… F3','19-10-26','FACT','-6 dag(e)','','g','Alm','','y','','c,c','21-09…','F Tilstede','Plejer F'),
+    R('09','Patient 09','Generalise…','Stg 13.10 med Mads','30-10-26','Alventer FACT','15 dag(e)','','g','Alm','','y','','c,c','','F Tilstede','Plejer G'),
+    R('10','Patient 10','Anden iek…','Stg 15.10 GG F2…','','OPUS','0 dag(e)','','g','Alm','c','r','','c,c','11-10…','B Udgang 15:45','Plejer D'),
+    R('12','Patient 12','Bipolar typ…','Stg 13.10 F2','22-10-26','FACT','-2 dag(e)','','g','Alm','','','','c,c','','F Tilstede','Plejer D'),
+    R('13','Patient 13','Posttraum…','Stg 14.10 F2','29-10-26','Skal henvises FACT mhp DAT','43 dag(e)','','g','Alm','','','','c,c','','F Tilstede','Plejer D'),
+    R('14','Patient 14','Blandet an…','Stg 16.10 F2','20-10-26','Henvist Angstpakke','11 dag(e)','','g','Alm','','','','c,c','03-10…','F Tilstede','Plejer A'),
+    R('15','Patient 15','Depressiv…','Netværksmø. 19/10 10:45 F2…','16-07-26','Afv. svar vedr. genop.','-78 dag(e)','','g','Alm','y','','','c,c','','F Tilstede','Plejer A, H'),
+    R('Gang1','','','','','','','','','','','','','','','',''),
+    R('Gang2','','','','','','','','','','','','','','','',''),
+    R('Gang3','','','','','','','','','','','','','','','','')
+  ]
+};
+let MODE='server';
 const DATECOLS=[4,14];
 const FONTS=['Segoe UI','Arial','Helvetica','Verdana','Tahoma','Trebuchet MS','Calibri','Georgia','Times New Roman','Courier New','system-ui','monospace'];
 const SEP_AFTER=[2,5,8,9,12,13]; // tykkere skillelinjer efter disse rækkeindex
@@ -57,8 +80,17 @@ function normalize(d){d.font=d.font||'Segoe UI';d.size=+d.size||12;d.title=d.tit
   d.rows=(d.rows||[]).map(r=>{r=Array.from({length:COLS.length},(_,i)=>r[i]??'');DATECOLS.forEach(c=>r[c]=toIso(r[c]));return r});return d}
 function applyStyle(){const g=['system-ui','monospace','sans-serif','serif'].includes(S.font);
   $('#app').style.fontFamily=(g?S.font:`"${S.font}"`)+',Arial,sans-serif';$('#app').style.fontSize=S.size+'px'}
-async function load(){S=normalize(await (await fetch('/api/data')).json());render()}
-function dot(v,cls){return `<span class="dot ${cls} ${v}"></span>`}
+async function getJson(u){const r=await fetch(u);if(!r.ok)throw 0;return r.json()}
+async function load(){
+  let d;
+  try{d=await getJson('api/data');MODE='server'}catch{
+    MODE='static';
+    try{const l=localStorage.getItem('board');if(l)d=JSON.parse(l)}catch{}
+    if(!d)try{d=await getJson('data.json')}catch{}
+    if(!d)d=DEFAULT;
+  }
+  S=normalize(d);render();
+  document.querySelector('.hint').firstChild.textContent=(MODE=='static'?'Statisk tilstand: ændringer gemmes kun i denne browser · ':'')+'Alt+P gemmer hele siden som PNG · Alt+F fuldskærm'}
 function render(){
   applyStyle();
   $('#app').classList.toggle('edit',editing);
@@ -102,7 +134,7 @@ function tools(){
   $('#bar').innerHTML=editing?`<label>Skrifttype <select id="ff">${FONTS.map(f=>`<option${f==S?.font?' selected':''}>${f}</option>`).join('')}</select></label>
    <label>Størrelse <input type="number" id="sz" min="8" max="40" value="${S?.size||12}"> px</label>
    <button id="exp">⭳ Eksportér JSON</button><button id="imp">⭱ Importér JSON</button><input type="file" id="file" accept=".json,application/json" hidden>
-   <span style="color:#8082a8">Import erstatter visningen — tryk Gem for at gemme på serveren</span>`:'';
+   ${MODE=='static'?'<button id="reset">Slet lokale ændringer</button><span style="color:#8082a8">Gem = kun denne browser. Eksportér JSON og læg filen i repoet som <b>data.json</b> for at opdatere for alle.</span>':'<span style="color:#8082a8">Import erstatter visningen — tryk Gem for at gemme på serveren</span>'}`:'';
   if(editing){
     $('#add').onclick=()=>{S.rows.push(Array(COLS.length).fill(''));render()};$('#save').onclick=save;
     $('#cancel').onclick=async()=>{editing=false;tools();await load()};
@@ -110,6 +142,7 @@ function tools(){
     $('#sz').oninput=e=>{S.size=Math.min(40,Math.max(8,+e.target.value||12));applyStyle()};
     $('#exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));
       a.download='afdeling-'+new Date().toISOString().slice(0,10)+'.json';a.click()};
+    if(MODE=='static')$('#reset').onclick=async()=>{if(confirm('Slet lokale ændringer og vis data.json / standarddata?')){localStorage.removeItem('board');editing=false;await load();tools()}};
     $('#imp').onclick=()=>$('#file').click();
     $('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;
       try{const d=JSON.parse(await f.text());if(!Array.isArray(d.rows))throw 0;S=normalize(d);tools();render()}
@@ -118,10 +151,12 @@ function tools(){
 function toggleFs(){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.()}
 document.addEventListener('fullscreenchange',()=>{document.querySelector('.hint').style.display=document.fullscreenElement?'none':''});
 async function startEdit(){
+  if(MODE=='static'){editing=true;tools();render();return}
   let r=await fetch('/api/auth',{headers:{'x-pass':pass}});
   if(r.status==401){pass=prompt('Adgangskode:')||'';r=await fetch('/api/auth',{headers:{'x-pass':pass}});if(r.status==401)return alert('Forkert adgangskode')}
   editing=true;tools();render()}
 async function save(){
+  if(MODE=='static'){try{localStorage.setItem('board',JSON.stringify(S))}catch{return alert('Kunne ikke gemme i browseren')}editing=false;tools();render();return}
   const r=await fetch('/api/data',{method:'PUT',headers:{'Content-Type':'application/json','x-pass':pass},body:JSON.stringify(S)});
   if(!r.ok)return alert('Kunne ikke gemme');editing=false;tools();render()}
 // ---- PNG af hele siden (ingen eksterne biblioteker) ----
